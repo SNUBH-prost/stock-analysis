@@ -99,14 +99,18 @@ export async function fetchQuote(code: string): Promise<QuoteData> {
   }
 }
 
-export async function fetchDailyCandles(code: string, count = 100): Promise<CandleData[]> {
+export async function fetchDailyCandles(
+  code: string,
+  count = 1250,
+  period: 'D' | 'W' | 'M' = 'D'
+): Promise<CandleData[]> {
   const token = await getAccessToken()
 
   const today = new Date()
   const endDate = today.toISOString().slice(0, 10).replace(/-/g, '')
-  // count일 전
   const startDay = new Date(today)
-  startDay.setDate(startDay.getDate() - count * 2) // 주말 여유
+  const daysBack = period === 'D' ? count * 2 : period === 'W' ? count * 9 : count * 35
+  startDay.setDate(startDay.getDate() - daysBack)
   const startDate = startDay.toISOString().slice(0, 10).replace(/-/g, '')
 
   const params = new URLSearchParams({
@@ -114,7 +118,7 @@ export async function fetchDailyCandles(code: string, count = 100): Promise<Cand
     fid_input_iscd: code,
     fid_input_date_1: startDate,
     fid_input_date_2: endDate,
-    fid_period_div_code: 'D',
+    fid_period_div_code: period,
     fid_org_adj_prc: '0',
   })
 

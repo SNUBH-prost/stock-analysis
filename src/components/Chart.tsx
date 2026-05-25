@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useCallback, useState } from 'react'
-import type { Chart as KLineChart, OverlayTemplate } from 'klinecharts'
+import type { Chart as KLineChart, OverlayTemplate, CandleType } from 'klinecharts'
 import type { CandleData } from '@/types/kis'
 import type { Level, Trade } from '@/types/db'
 
 type KLineData = { timestamp: number; open: number; high: number; low: number; close: number; volume: number }
 type Timeframe = 'D' | 'W' | 'M' | '1'
 type DrawTool = 'none' | 'horizontalRayLine' | 'rayLine' | 'segment' | 'parallelStraightLine' | 'fibonacciLine'
+type ScaleMode = 'normal' | 'logarithm' | 'percentage'
 
 let sellAnnotationRegistered = false
 
@@ -65,13 +66,27 @@ const DRAW_TOOLS: { key: DrawTool; icon: string; label: string }[] = [
   { key: 'fibonacciLine', icon: 'Fib', label: '피보나치' },
 ]
 
+const CANDLE_TYPES: { key: CandleType; label: string }[] = [
+  { key: 'candle_solid', label: '실봉' },
+  { key: 'candle_stroke', label: '속봉' },
+  { key: 'ohlc', label: 'OHLC' },
+  { key: 'area', label: '라인' },
+]
+
 const INDICATORS: { key: string; label: string; mainPane: boolean }[] = [
   { key: 'MA', label: 'MA', mainPane: true },
   { key: 'EMA', label: 'EMA', mainPane: true },
   { key: 'BOLL', label: 'BOLL', mainPane: true },
+  { key: 'SAR', label: 'SAR', mainPane: true },
   { key: 'VOL', label: 'VOL', mainPane: false },
   { key: 'MACD', label: 'MACD', mainPane: false },
   { key: 'RSI', label: 'RSI', mainPane: false },
+  { key: 'KDJ', label: 'KDJ', mainPane: false },
+  { key: 'BIAS', label: 'BIAS', mainPane: false },
+  { key: 'CCI', label: 'CCI', mainPane: false },
+  { key: 'WR', label: 'WR', mainPane: false },
+  { key: 'DMI', label: 'DMI', mainPane: false },
+  { key: 'OBV', label: 'OBV', mainPane: false },
 ]
 
 interface Props {
@@ -91,6 +106,8 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
   const [loading, setLoading] = useState(false)
   const [drawTool, setDrawTool] = useState<DrawTool>('none')
   const [activeIndicators, setActiveIndicators] = useState<Set<string>>(new Set())
+  const [candleType, setCandleType] = useState<CandleType>('candle_solid')
+  const [scaleMode, setScaleMode] = useState<ScaleMode>('normal')
 
   const initChart = useCallback(async () => {
     if (!containerRef.current) return
@@ -142,6 +159,7 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
       if (klineDataRef.current.length === 0) break
       chart.createOverlay({
         name: 'horizontalRayLine',
+        groupId: 'system',
         points: [{ timestamp: klineDataRef.current[0].timestamp, value: lv.price }],
         styles: { line: { color: lv.color, size: 1, style: 'dashed', dashedValue: [4, 4] } },
       })
@@ -150,6 +168,7 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
     if (avgBuyPrice && klineDataRef.current.length > 0) {
       chart.createOverlay({
         name: 'horizontalRayLine',
+        groupId: 'system',
         points: [{ timestamp: klineDataRef.current[0].timestamp, value: avgBuyPrice }],
         styles: { line: { color: '#f59e0b', size: 1, style: 'dashed', dashedValue: [6, 3] } },
         lock: true,
@@ -161,6 +180,7 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
       if (trade.side === 'BUY') {
         chart.createOverlay({
           name: 'simpleAnnotation',
+          groupId: 'system',
           points: [{ timestamp: ts, value: Number(trade.price) }],
           extendData: `매수 ${Number(trade.price).toLocaleString()}`,
           styles: {
@@ -172,6 +192,7 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
       } else {
         chart.createOverlay({
           name: 'sellAnnotation',
+          groupId: 'system',
           points: [{ timestamp: ts, value: Number(trade.price) }],
           extendData: `매도 ${Number(trade.price).toLocaleString()}`,
           styles: {
@@ -187,6 +208,8 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
   useEffect(() => {
     initChart()
     setActiveIndicators(new Set(['VOL']))
+    setCandleType('candle_solid')
+    setScaleMode('normal')
     return () => {
       if (containerRef.current) {
         import('klinecharts').then(({ dispose }) => {
@@ -205,7 +228,7 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
         const res = await fetch(`/api/minute/${code}`)
         data = await res.json()
       } else {
-        const count = tf === 'M' ? 60 : tf === 'W' ? 100 : 1250
+        const count = tf === 'M' ? 60 : tf === 'W' ? 150 : 1250
         const res = await fetch(`/api/daily/${code}?count=${count}&period=${tf}`)
         data = await res.json()
       }
@@ -228,7 +251,7 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
   const handleDrawTool = useCallback((tool: DrawTool) => {
     setDrawTool(tool)
     if (tool !== 'none' && chartRef.current) {
-      chartRef.current.createOverlay({ name: tool })
+      chartRef.current.createOverlay({ name: tool, groupId: 'drawing' })
     }
   }, [])
 
@@ -244,6 +267,31 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
     }
   }, [activeIndicators])
 
+  const handleCandleType = useCallback(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    const idx = CANDLE_TYPES.findIndex(c => c.key === candleType)
+    const next = CANDLE_TYPES[(idx + 1) % CANDLE_TYPES.length].key
+    chart.setStyles({ candle: { type: next } })
+    setCandleType(next)
+  }, [candleType])
+
+  const handleScaleMode = useCallback((mode: ScaleMode) => {
+    const chart = chartRef.current
+    if (!chart) return
+    const next = scaleMode === mode ? 'normal' : mode
+    chart.overrideYAxis({ name: next })
+    setScaleMode(next)
+  }, [scaleMode])
+
+  const handleScrollToLatest = useCallback(() => {
+    chartRef.current?.scrollToRealTime(300)
+  }, [])
+
+  const handleClearDrawings = useCallback(() => {
+    chartRef.current?.removeOverlay({ groupId: 'drawing' })
+  }, [])
+
   if (initialCandles.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-gray-600 text-sm">
@@ -252,9 +300,12 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
     )
   }
 
+  const nextCandleLabel = CANDLE_TYPES[(CANDLE_TYPES.findIndex(c => c.key === candleType) + 1) % CANDLE_TYPES.length].label
+
   return (
     <div className="flex flex-col h-full bg-gray-950">
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 flex-wrap bg-gray-900">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-800 flex-wrap bg-gray-900">
+        {/* Timeframes */}
         <div className="flex gap-0.5">
           {TIMEFRAMES.map(tf => (
             <button
@@ -273,6 +324,7 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
 
         <div className="w-px h-3.5 bg-gray-700" />
 
+        {/* Drawing tools */}
         <div className="flex gap-0.5">
           {DRAW_TOOLS.map(tool => (
             <button
@@ -288,11 +340,61 @@ export default function Chart({ code, initialCandles, levels = [], trades = [], 
               {tool.icon}
             </button>
           ))}
+          <button
+            onClick={handleClearDrawings}
+            title="그림 지우기"
+            className="px-2 py-1 text-xs rounded text-gray-600 hover:text-red-400 hover:bg-gray-700 transition-colors"
+          >
+            ✕
+          </button>
         </div>
 
         <div className="w-px h-3.5 bg-gray-700" />
 
+        {/* Candle type + scale */}
         <div className="flex gap-0.5">
+          <button
+            onClick={handleCandleType}
+            title={`다음: ${nextCandleLabel}`}
+            className="px-2 py-1 text-xs rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          >
+            {CANDLE_TYPES.find(c => c.key === candleType)?.label}
+          </button>
+          <button
+            onClick={() => handleScaleMode('logarithm')}
+            title="로그 스케일"
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              scaleMode === 'logarithm'
+                ? 'bg-gray-600 text-white'
+                : 'text-gray-500 hover:text-white hover:bg-gray-700'
+            }`}
+          >
+            Log
+          </button>
+          <button
+            onClick={() => handleScaleMode('percentage')}
+            title="등락률 스케일"
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              scaleMode === 'percentage'
+                ? 'bg-gray-600 text-white'
+                : 'text-gray-500 hover:text-white hover:bg-gray-700'
+            }`}
+          >
+            %
+          </button>
+          <button
+            onClick={handleScrollToLatest}
+            title="최신으로"
+            className="px-2 py-1 text-xs rounded text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+          >
+            →|
+          </button>
+        </div>
+
+        <div className="w-px h-3.5 bg-gray-700" />
+
+        {/* Indicators */}
+        <div className="flex gap-0.5 flex-wrap">
           {INDICATORS.map(ind => (
             <button
               key={ind.key}

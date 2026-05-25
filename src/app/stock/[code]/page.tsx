@@ -37,7 +37,7 @@ export default async function StockDetailPage({ params }: Props) {
   // 시세 + 일봉 병렬 조회
   const [quoteResult, candlesResult] = await Promise.allSettled([
     fetchQuote(code),
-    fetchDailyCandles(code, 200),
+    fetchDailyCandles(code, 1250),
   ])
 
   const quote = quoteResult.status === 'fulfilled' ? quoteResult.value : null
