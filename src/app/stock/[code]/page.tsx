@@ -45,7 +45,7 @@ export default async function StockDetailPage({ params }: Props) {
   }
 
   try {
-    candles = await fetchDailyCandles(code, 300)
+    candles = await fetchDailyCandles(code, 750)
   } catch (e) {
     kisError = (kisError ? kisError + ' | ' : '') + `candles: ${e instanceof Error ? e.message : String(e)}`
   }

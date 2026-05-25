@@ -125,7 +125,7 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
         const res = await fetch(`/api/minute/${code}`)
         data = await res.json()
       } else {
-        const count = tf === 'M' ? 60 : tf === 'W' ? 100 : 300
+        const count = tf === 'M' ? 60 : tf === 'W' ? 100 : 750
         const res = await fetch(`/api/daily/${code}?count=${count}&period=${tf}`)
         data = await res.json()
       }
@@ -174,9 +174,7 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
 
   return (
     <div className="flex flex-col h-full bg-gray-950">
-      {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 flex-wrap bg-gray-900">
-        {/* Timeframe */}
         <div className="flex gap-0.5">
           {TIMEFRAMES.map(tf => (
             <button
@@ -195,7 +193,6 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
 
         <div className="w-px h-3.5 bg-gray-700" />
 
-        {/* Drawing tools */}
         <div className="flex gap-0.5">
           {DRAW_TOOLS.map(tool => (
             <button
@@ -215,7 +212,6 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
 
         <div className="w-px h-3.5 bg-gray-700" />
 
-        {/* Indicators */}
         <div className="flex gap-0.5">
           {INDICATORS.map(ind => (
             <button
@@ -237,7 +233,6 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
         )}
       </div>
 
-      {/* Chart canvas */}
       <div ref={containerRef} className="flex-1 min-h-0" />
     </div>
   )

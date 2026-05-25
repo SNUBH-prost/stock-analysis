@@ -25,7 +25,6 @@ async function getAccessToken(): Promise<string> {
   if (tokenCache && tokenCache.expiresAt - now > 60 * 60 * 1000) {
     return tokenCache.token
   }
-  // 동시 요청이 여러 개일 때 토큰을 한 번만 발급
   if (tokenPromise) return tokenPromise
 
   tokenPromise = (async () => {
@@ -107,7 +106,7 @@ export async function fetchQuote(code: string): Promise<QuoteData> {
 
 export async function fetchDailyCandles(
   code: string,
-  count = 300,
+  count = 750,
   period: 'D' | 'W' | 'M' = 'D'
 ): Promise<CandleData[]> {
   const token = await getAccessToken()
