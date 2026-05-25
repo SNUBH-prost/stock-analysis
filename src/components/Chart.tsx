@@ -93,6 +93,7 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
     })
     chart.setSymbol({ ticker: code, pricePrecision: 0, volumePrecision: 0 })
     chart.setPeriod({ type: 'day', span: 1 })
+    chart.createIndicator('VOL')
 
     for (const lv of levels) {
       if (klineDataRef.current.length === 0) break
@@ -106,7 +107,7 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
 
   useEffect(() => {
     initChart()
-    setActiveIndicators(new Set())
+    setActiveIndicators(new Set(['VOL']))
     return () => {
       if (containerRef.current) {
         import('klinecharts').then(({ dispose }) => {
@@ -125,7 +126,7 @@ export default function Chart({ code, initialCandles, levels = [] }: Props) {
         const res = await fetch(`/api/minute/${code}`)
         data = await res.json()
       } else {
-        const count = tf === 'M' ? 60 : tf === 'W' ? 100 : 750
+        const count = tf === 'M' ? 60 : tf === 'W' ? 100 : 1250
         const res = await fetch(`/api/daily/${code}?count=${count}&period=${tf}`)
         data = await res.json()
       }

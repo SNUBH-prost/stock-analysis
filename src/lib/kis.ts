@@ -106,7 +106,7 @@ export async function fetchQuote(code: string): Promise<QuoteData> {
 
 export async function fetchDailyCandles(
   code: string,
-  count = 750,
+  count = 1250,
   period: 'D' | 'W' | 'M' = 'D'
 ): Promise<CandleData[]> {
   const token = await getAccessToken()
