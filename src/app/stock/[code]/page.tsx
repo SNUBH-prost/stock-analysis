@@ -34,14 +34,24 @@ export default async function StockDetailPage({ params }: Props) {
 
   if (!watchlistItem) notFound()
 
-  // 시세 + 일봉 병렬 조회
-  const [quoteResult, candlesResult] = await Promise.allSettled([
-    fetchQuote(code),
-    fetchDailyCandles(code, 200),
-  ])
+  // 시세 + 일봉 순차 조회 (토큰 공유)
+  let quote = null
+  let candles: Awaited<ReturnType<typeof fetchDailyCandles>> = []
+  let kisError: string | null = null
 
-  const quote = quoteResult.status === 'fulfilled' ? quoteResult.value : null
-  const candles = candlesResult.status === 'fulfilled' ? candlesResult.value : []
+  try {
+    quote = await fetchQuote(code)
+  } catch (e) {
+    kisError = `quote: ${e instanceof Error ? e.message : String(e)}`
+  }
+
+  try {
+    candles = await fetchDailyCandles(code, 100)
+  } catch (e) {
+    kisError = (kisError ? kisError + ' | ' : '') + `candles: ${e instanceof Error ? e.message : String(e)}`
+  }
+
+  console.error('[stock page] kisError:', kisError, 'candles.length:', candles.length)
 
   const pnl = quote && trades && trades.length > 0
     ? calcPnl(trades, quote.price)
