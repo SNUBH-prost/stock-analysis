@@ -9,15 +9,15 @@ export const KisTokenResponseSchema = z.object({
 export type KisTokenResponse = z.infer<typeof KisTokenResponseSchema>
 
 const KisOutputSchema = z.object({
-  stck_prpr: z.string(),   // 주식 현재가
-  stck_oprc: z.string(),   // 시가
-  stck_hgpr: z.string(),   // 고가
-  stck_lwpr: z.string(),   // 저가
-  acml_vol: z.string(),    // 누적 거래량
-  prdy_vrss: z.string(),   // 전일 대비
-  prdy_ctrt: z.string(),   // 전일 대비율
-  hts_kor_isnm: z.string(), // 종목명
-})
+  stck_prpr: z.string(),
+  stck_oprc: z.string(),
+  stck_hgpr: z.string(),
+  stck_lwpr: z.string(),
+  acml_vol: z.string(),
+  prdy_vrss: z.string(),
+  prdy_ctrt: z.string(),
+  hts_kor_isnm: z.string().optional(),
+}).passthrough()
 
 export const KisQuoteResponseSchema = z.object({
   rt_cd: z.string(),
@@ -28,13 +28,13 @@ export const KisQuoteResponseSchema = z.object({
 export type KisQuoteResponse = z.infer<typeof KisQuoteResponseSchema>
 
 const KisDailyItemSchema = z.object({
-  stck_bsop_date: z.string(), // 영업일자 YYYYMMDD
-  stck_oprc: z.string(),      // 시가
-  stck_hgpr: z.string(),      // 고가
-  stck_lwpr: z.string(),      // 저가
-  stck_clpr: z.string(),      // 종가
-  acml_vol: z.string(),       // 누적 거래량
-})
+  stck_bsop_date: z.string(),
+  stck_oprc: z.string(),
+  stck_hgpr: z.string(),
+  stck_lwpr: z.string(),
+  stck_clpr: z.string(),
+  acml_vol: z.string(),
+}).passthrough()
 
 export const KisDailyResponseSchema = z.object({
   rt_cd: z.string(),
@@ -45,14 +45,14 @@ export const KisDailyResponseSchema = z.object({
 export type KisDailyResponse = z.infer<typeof KisDailyResponseSchema>
 
 const KisMinuteItemSchema = z.object({
-  stck_bsop_date: z.string(), // 영업일자
-  stck_cntg_hour: z.string(), // 체결 시각 HHMMSS
+  stck_bsop_date: z.string(),
+  stck_cntg_hour: z.string(),
   stck_oprc: z.string(),
   stck_hgpr: z.string(),
   stck_lwpr: z.string(),
-  stck_prpr: z.string(),      // 종가(현재가)
-  cntg_vol: z.string(),       // 체결 거래량
-})
+  stck_prpr: z.string(),
+  cntg_vol: z.string(),
+}).passthrough()
 
 export const KisMinuteResponseSchema = z.object({
   rt_cd: z.string(),
