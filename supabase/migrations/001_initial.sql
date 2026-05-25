@@ -59,7 +59,13 @@ alter table levels enable row level security;
 alter table drawings enable row level security;
 alter table journal_entries enable row level security;
 
--- RLS 정책: 본인 데이터만
+-- RLS 정책 (기존 삭제 후 재생성)
+drop policy if exists "watchlist_owner" on watchlist;
+drop policy if exists "trades_owner" on trades;
+drop policy if exists "levels_owner" on levels;
+drop policy if exists "drawings_owner" on drawings;
+drop policy if exists "journal_owner" on journal_entries;
+
 create policy "watchlist_owner" on watchlist using (user_id = auth.uid());
 create policy "trades_owner" on trades using (user_id = auth.uid());
 create policy "levels_owner" on levels using (user_id = auth.uid());
