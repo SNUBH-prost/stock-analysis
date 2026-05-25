@@ -16,8 +16,8 @@ const KisOutputSchema = z.object({
   acml_vol: z.string(),
   prdy_vrss: z.string(),
   prdy_ctrt: z.string(),
-  hts_kor_isnm: z.string().optional(),
-}).passthrough()
+  hts_kor_isnm: z.string().catch(''),
+})
 
 export const KisQuoteResponseSchema = z.object({
   rt_cd: z.string(),
@@ -34,7 +34,7 @@ const KisDailyItemSchema = z.object({
   stck_lwpr: z.string(),
   stck_clpr: z.string(),
   acml_vol: z.string(),
-}).passthrough()
+})
 
 export const KisDailyResponseSchema = z.object({
   rt_cd: z.string(),
@@ -52,7 +52,7 @@ const KisMinuteItemSchema = z.object({
   stck_lwpr: z.string(),
   stck_prpr: z.string(),
   cntg_vol: z.string(),
-}).passthrough()
+})
 
 export const KisMinuteResponseSchema = z.object({
   rt_cd: z.string(),
