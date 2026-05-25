@@ -12,10 +12,14 @@ export async function GET(
   }
 
   const countParam = request.nextUrl.searchParams.get('count')
-  const count = countParam ? Math.min(parseInt(countParam, 10), 500) : 100
+  const count = countParam ? Math.min(parseInt(countParam, 10), 500) : 300
+  const periodParam = request.nextUrl.searchParams.get('period')
+  const period = (['D', 'W', 'M'] as const).includes(periodParam as 'D' | 'W' | 'M')
+    ? (periodParam as 'D' | 'W' | 'M')
+    : 'D'
 
   try {
-    const candles = await fetchDailyCandles(code, count)
+    const candles = await fetchDailyCandles(code, count, period)
     return NextResponse.json(candles)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'

@@ -13,13 +13,13 @@ import LevelEditor from '@/components/LevelEditor'
 const Chart = dynamic(() => import('@/components/Chart'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[640px] bg-gray-900 rounded-xl flex items-center justify-center">
+    <div className="flex-1 bg-gray-950 flex items-center justify-center">
       <span className="text-gray-600 text-sm">차트 로딩 중...</span>
     </div>
   ),
 })
 
-type Tab = 'chart' | 'trades' | 'levels' | 'journal'
+type Tab = 'trades' | 'levels' | 'journal'
 
 interface Props {
   code: string
@@ -45,8 +45,9 @@ export default function StockDetailClient({
   pnl,
 }: Props) {
   const router = useRouter()
-  const [tab, setTab] = useState<Tab>('chart')
+  const [tab, setTab] = useState<Tab>('trades')
   const [levels, setLevels] = useState(initialLevels)
+  const [bottomOpen, setBottomOpen] = useState(true)
 
   const refreshLevels = useCallback(async () => {
     const { createClient } = await import('@/lib/supabase/client')
@@ -59,145 +60,141 @@ export default function StockDetailClient({
     if (data) setLevels(data)
   }, [code, userId])
 
-  const isPositive = pnl && pnl.unrealizedPnlRate >= 0
+  const isPositive = !pnl || pnl.unrealizedPnlRate >= 0
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'chart', label: '차트' },
     { key: 'trades', label: '매매' },
-    { key: 'levels', label: '선' },
+    { key: 'levels', label: '지지/저항' },
     { key: 'journal', label: '일지' },
   ]
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      {/* 헤더 */}
-      <div className="flex items-center gap-3 mb-6">
-        <Link href="/" className="text-gray-500 hover:text-white transition-colors text-sm">
+    <div className="flex flex-col" style={{ height: '100dvh' }}>
+      {/* Header */}
+      <header className="flex items-center gap-3 px-4 py-2 border-b border-gray-800 bg-gray-950 flex-shrink-0 flex-wrap">
+        <Link href="/" className="text-gray-500 hover:text-white transition-colors text-xs">
           ← 대시보드
         </Link>
-        <span className="text-gray-700">/</span>
-        <h1 className="font-semibold">
-          {watchlistItem.name}
-          <span className="text-gray-500 font-normal text-sm ml-2">{code}</span>
-        </h1>
-      </div>
+        <span className="text-gray-700 text-xs">|</span>
+        <span className="font-semibold text-sm">{watchlistItem.name}</span>
+        <span className="text-gray-500 text-xs">{code}</span>
 
-      {/* 현재가 요약 */}
-      {quote && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4 flex flex-wrap gap-4">
-          <div>
-            <p className="text-2xl font-semibold">{quote.price.toLocaleString()}원</p>
-            <p className={`text-sm mt-0.5 ${quote.changeRate >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
-              {quote.changeRate >= 0 ? '+' : ''}{quote.change.toLocaleString()}원
+        {quote && (
+          <>
+            <span className="font-semibold">{quote.price.toLocaleString()}원</span>
+            <span className={`text-sm ${quote.changeRate >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+              {quote.changeRate >= 0 ? '+' : ''}{quote.change.toLocaleString()}
               ({quote.changeRate >= 0 ? '+' : ''}{quote.changeRate.toFixed(2)}%)
-            </p>
-          </div>
-          {pnl && (
-            <div className="ml-auto text-right">
-              <p className={`text-lg font-semibold ${isPositive ? 'text-red-400' : 'text-blue-400'}`}>
-                {isPositive ? '+' : ''}{pnl.unrealizedPnlRate.toFixed(2)}%
-              </p>
-              <p className={`text-sm ${isPositive ? 'text-red-400' : 'text-blue-400'}`}>
-                {isPositive ? '+' : ''}{pnl.unrealizedPnl.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}원
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                평균 {pnl.position.avgBuyPrice.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}원 ·
-                {pnl.position.quantity}주 · {pnl.daysSinceBuy}일
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+            </span>
+          </>
+        )}
 
-      {/* 탭 */}
-      <div className="flex gap-1 mb-4 bg-gray-900 rounded-lg p-1 w-fit">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
-              tab === t.key
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+        {pnl && (
+          <div className={`ml-auto text-xs ${isPositive ? 'text-red-400' : 'text-blue-400'}`}>
+            평가손익 {isPositive ? '+' : ''}{pnl.unrealizedPnlRate.toFixed(2)}%
+            &nbsp;({isPositive ? '+' : ''}{pnl.unrealizedPnl.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}원)
+            &nbsp;·&nbsp;평균 {pnl.position.avgBuyPrice.toLocaleString()}원 · {pnl.position.quantity}주 · {pnl.daysSinceBuy}일
+          </div>
+        )}
+      </header>
+
+      {/* Chart - fills remaining space */}
+      <div className="flex-1 min-h-0">
+        <Chart code={code} initialCandles={candles} levels={levels} />
       </div>
 
-      {/* 차트 탭 */}
-      {tab === 'chart' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden" style={{ height: 640 }}>
-          {candles.length > 0 ? (
-            <Chart candles={candles} levels={levels} />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-              시세 데이터를 가져올 수 없습니다
-            </div>
-          )}
+      {/* Bottom panel */}
+      <div
+        className="flex-shrink-0 border-t border-gray-800 bg-gray-950 flex flex-col"
+        style={{ height: bottomOpen ? 260 : 40 }}
+      >
+        {/* Tab bar */}
+        <div className="flex items-center gap-1 px-3 py-1.5 border-b border-gray-800 flex-shrink-0">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => { setTab(t.key); setBottomOpen(true) }}
+              className={`px-3 py-1 rounded text-xs transition-colors ${
+                tab === t.key && bottomOpen
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+          <button
+            onClick={() => setBottomOpen(v => !v)}
+            className="ml-auto text-gray-600 hover:text-gray-400 text-xs px-2 py-1"
+          >
+            {bottomOpen ? '▼' : '▲'}
+          </button>
         </div>
-      )}
 
-      {/* 매매 탭 */}
-      {tab === 'trades' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <h3 className="text-sm font-medium mb-4">매매 추가</h3>
-            <TradeForm code={code} userId={userId} onSuccess={() => router.refresh()} />
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <h3 className="text-sm font-medium mb-4">매매 기록</h3>
-            {trades.length === 0 ? (
-              <p className="text-gray-600 text-sm">기록 없음</p>
-            ) : (
-              <div className="space-y-2">
-                {trades.map(t => (
-<div key={t.id} className="flex items-center justify-between text-sm py-2 border-b border-gray-800 last:border-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                        t.side === 'BUY'
-                          ? 'bg-red-500/20 text-red-400'
-                          : 'bg-blue-500/20 text-blue-400'
-                      }`}>
-                        {t.side === 'BUY' ? '매수' : '매도'}
-                      </span>
-                      <span className="text-gray-400 text-xs">{t.trade_date}</span>
+        {/* Tab content */}
+        {bottomOpen && (
+          <div className="flex-1 overflow-y-auto p-3">
+            {tab === 'trades' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <h3 className="text-xs font-medium text-gray-400 mb-2">매매 추가</h3>
+                  <TradeForm code={code} userId={userId} onSuccess={() => router.refresh()} />
+                </div>
+                <div>
+                  <h3 className="text-xs font-medium text-gray-400 mb-2">매매 기록</h3>
+                  {trades.length === 0 ? (
+                    <p className="text-gray-600 text-xs">기록 없음</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {trades.map(t => (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between text-xs py-1.5 border-b border-gray-800 last:border-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-medium px-1.5 py-0.5 rounded ${
+                                t.side === 'BUY'
+                                  ? 'bg-red-500/20 text-red-400'
+                                  : 'bg-blue-500/20 text-blue-400'
+                              }`}
+                            >
+                              {t.side === 'BUY' ? '매수' : '매도'}
+                            </span>
+                            <span className="text-gray-400">{t.trade_date}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-white">{t.price.toLocaleString()}원</span>
+                            <span className="text-gray-500 ml-2">{t.quantity}주</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="text-right">
-                      <p className="text-white">{t.price.toLocaleString()}원</p>
-                      <p className="text-gray-500 text-xs">{t.quantity}주</p>
-                    </div>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
             )}
+
+            {tab === 'levels' && (
+              <LevelEditor
+                code={code}
+                userId={userId}
+                levels={levels}
+                onRefresh={refreshLevels}
+              />
+            )}
+
+            {tab === 'journal' && (
+              <JournalTab
+                code={code}
+                userId={userId}
+                entries={journalEntries}
+                onRefresh={() => router.refresh()}
+              />
+            )}
           </div>
-        </div>
-      )}
-
-      {/* 지지/저항선 탭 */}
-      {tab === 'levels' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 max-w-sm">
-          <h3 className="text-sm font-medium mb-4">지지/저항선</h3>
-          <LevelEditor
-            code={code}
-            userId={userId}
-            levels={levels}
-            onRefresh={refreshLevels}
-          />
-        </div>
-      )}
-
-      {/* 일지 탭 */}
-      {tab === 'journal' && (
-        <JournalTab
-          code={code}
-          userId={userId}
-          entries={journalEntries}
-          onRefresh={() => router.refresh()}
-        />
-      )}
+        )}
+      </div>
     </div>
   )
 }
@@ -235,37 +232,37 @@ function JournalTab({
   }
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+    <div className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-2">
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500">날짜</label>
           <input
             type="date"
             value={entryDate}
             onChange={e => setEntryDate(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-gray-500"
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-gray-500"
           />
         </div>
         <textarea
           value={content}
           onChange={e => setContent(e.target.value)}
-          rows={4}
+          rows={3}
           placeholder="매매 이유, 시나리오, 회고..."
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gray-500 resize-none placeholder-gray-600"
+          className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-gray-500 resize-none placeholder-gray-600"
         />
         <button
           type="submit"
           disabled={loading || !content.trim()}
-          className="bg-white text-gray-950 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-100 disabled:opacity-50 transition-colors"
+          className="bg-white text-gray-950 rounded px-3 py-1.5 text-xs font-medium hover:bg-gray-100 disabled:opacity-50 transition-colors"
         >
           {loading ? '저장 중...' : '저장'}
         </button>
       </form>
 
       {entries.map(entry => (
-        <div key={entry.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500 mb-2">{entry.entry_date}</p>
-          <p className="text-sm text-gray-200 whitespace-pre-wrap">{entry.content}</p>
+        <div key={entry.id} className="border border-gray-800 rounded p-2">
+          <p className="text-xs text-gray-500 mb-1">{entry.entry_date}</p>
+          <p className="text-xs text-gray-200 whitespace-pre-wrap">{entry.content}</p>
         </div>
       ))}
     </div>

@@ -34,7 +34,6 @@ export default async function StockDetailPage({ params }: Props) {
 
   if (!watchlistItem) notFound()
 
-  // 시세 + 일봉 순차 조회 (토큰 공유)
   let quote = null
   let candles: Awaited<ReturnType<typeof fetchDailyCandles>> = []
   let kisError: string | null = null
@@ -46,7 +45,7 @@ export default async function StockDetailPage({ params }: Props) {
   }
 
   try {
-    candles = await fetchDailyCandles(code, 100)
+    candles = await fetchDailyCandles(code, 300)
   } catch (e) {
     kisError = (kisError ? kisError + ' | ' : '') + `candles: ${e instanceof Error ? e.message : String(e)}`
   }
