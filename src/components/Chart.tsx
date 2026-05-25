@@ -80,6 +80,8 @@ export default function Chart({ candles, levels = [] }: Props) {
         callback(klineData, false)
       },
     })
+    chart.setSymbol({ ticker: 'stock', pricePrecision: 0, volumePrecision: 0 })
+    chart.setPeriod({ type: 'day', span: 1 })
 
     // 지지/저항선 수평 오버레이
     for (const lv of levels) {
