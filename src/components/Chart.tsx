@@ -107,5 +107,5 @@ export default function Chart({ candles, levels = [] }: Props) {
     }
   }, [initChart])
 
-  return <div ref={containerRef} className="w-full h-full" style={{ minHeight: 400 }} />
+  return <div ref={containerRef} className="w-full h-full" style={{ minHeight: 640 }} />
 }

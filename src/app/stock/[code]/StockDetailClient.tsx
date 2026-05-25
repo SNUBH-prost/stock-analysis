@@ -13,7 +13,7 @@ import LevelEditor from '@/components/LevelEditor'
 const Chart = dynamic(() => import('@/components/Chart'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[400px] bg-gray-900 rounded-xl flex items-center justify-center">
+    <div className="w-full h-[640px] bg-gray-900 rounded-xl flex items-center justify-center">
       <span className="text-gray-600 text-sm">차트 로딩 중...</span>
     </div>
   ),
@@ -128,7 +128,7 @@ export default function StockDetailClient({
 
       {/* 차트 탭 */}
       {tab === 'chart' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden" style={{ height: 480 }}>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden" style={{ height: 640 }}>
           {candles.length > 0 ? (
             <Chart candles={candles} levels={levels} />
           ) : (
@@ -153,7 +153,7 @@ export default function StockDetailClient({
             ) : (
               <div className="space-y-2">
                 {trades.map(t => (
-                  <div key={t.id} className="flex items-center justify-between text-sm py-2 border-b border-gray-800 last:border-0">
+<div key={t.id} className="flex items-center justify-between text-sm py-2 border-b border-gray-800 last:border-0">
                     <div className="flex items-center gap-2">
                       <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
                         t.side === 'BUY'
