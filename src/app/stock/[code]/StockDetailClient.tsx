@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import type { Trade, Level, JournalEntry, Watchlist } from '@/types/db'
+import type { Trade, Level, JournalEntry, Watchlist, Drawing } from '@/types/db'
 import type { QuoteData, CandleData } from '@/types/kis'
 import type { PnlResult } from '@/lib/pnl'
 import TradeForm from '@/components/TradeForm'
@@ -28,6 +28,7 @@ interface Props {
   trades: Trade[]
   levels: Level[]
   journalEntries: JournalEntry[]
+  drawings: Drawing[]
   quote: QuoteData | null
   candles: CandleData[]
   pnl: PnlResult | null
@@ -40,6 +41,7 @@ export default function StockDetailClient({
   trades,
   levels: initialLevels,
   journalEntries,
+  drawings,
   quote,
   candles,
   pnl,
@@ -102,10 +104,12 @@ export default function StockDetailClient({
       <div className="flex-1 min-h-0">
         <Chart
           code={code}
+          userId={userId}
           initialCandles={candles}
           levels={levels}
           trades={trades}
           avgBuyPrice={pnl?.position.avgBuyPrice}
+          savedDrawings={drawings}
         />
       </div>
 

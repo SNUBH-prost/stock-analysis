@@ -25,11 +25,13 @@ export default async function StockDetailPage({ params }: Props) {
     { data: trades },
     { data: levels },
     { data: journalEntries },
+    { data: drawings },
   ] = await Promise.all([
     supabase.from('watchlist').select('*').eq('code', code).eq('user_id', user.id).single(),
     supabase.from('trades').select('*').eq('code', code).eq('user_id', user.id).order('trade_date', { ascending: false }),
     supabase.from('levels').select('*').eq('code', code).eq('user_id', user.id),
     supabase.from('journal_entries').select('*').eq('code', code).eq('user_id', user.id).order('entry_date', { ascending: false }),
+    supabase.from('drawings').select('*').eq('code', code).eq('user_id', user.id),
   ])
 
   if (!watchlistItem) notFound()
@@ -55,6 +57,7 @@ export default async function StockDetailPage({ params }: Props) {
       trades={trades ?? []}
       levels={levels ?? []}
       journalEntries={journalEntries ?? []}
+      drawings={drawings ?? []}
       quote={quote}
       candles={candles}
       pnl={pnl}
