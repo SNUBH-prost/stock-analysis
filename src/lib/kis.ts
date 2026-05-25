@@ -17,40 +17,46 @@ interface TokenCache {
   expiresAt: number
 }
 
-// 서버 메모리 캐시 (Next.js 단일 프로세스 가정)
 let tokenCache: TokenCache | null = null
+let tokenPromise: Promise<string> | null = null
 
 async function getAccessToken(): Promise<string> {
   const now = Date.now()
-  // 만료 1시간 전 갱신
   if (tokenCache && tokenCache.expiresAt - now > 60 * 60 * 1000) {
     return tokenCache.token
   }
+  // 동시 요청이 여러 개일 때 토큰을 한 번만 발급
+  if (tokenPromise) return tokenPromise
 
-  const res = await fetch(`${BASE_URL}/oauth2/tokenP`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      appkey: APP_KEY,
-      appsecret: APP_SECRET,
-    }),
-  })
+  tokenPromise = (async () => {
+    const res = await fetch(`${BASE_URL}/oauth2/tokenP`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credentials',
+        appkey: APP_KEY,
+        appsecret: APP_SECRET,
+      }),
+    })
 
-  if (!res.ok) {
-    throw new Error(`KIS token fetch failed: ${res.status}`)
-  }
+    if (!res.ok) {
+      tokenPromise = null
+      throw new Error(`KIS token fetch failed: ${res.status}`)
+    }
 
-  const raw = await res.json()
-  const parsed = KisTokenResponseSchema.parse(raw)
+    const raw = await res.json()
+    const parsed = KisTokenResponseSchema.parse(raw)
 
-  tokenCache = {
-    token: parsed.access_token,
-    // expires_in은 초 단위
-    expiresAt: now + parsed.expires_in * 1000,
-  }
+    tokenCache = {
+      token: parsed.access_token,
+      expiresAt: now + parsed.expires_in * 1000,
+    }
 
-  return tokenCache.token
+    tokenPromise = null
+    return tokenCache.token
+  })()
+
+  return tokenPromise
 }
 
 function kisHeaders(token: string, trId: string) {
@@ -104,9 +110,8 @@ export async function fetchDailyCandles(code: string, count = 100): Promise<Cand
 
   const today = new Date()
   const endDate = today.toISOString().slice(0, 10).replace(/-/g, '')
-  // count일 전
   const startDay = new Date(today)
-  startDay.setDate(startDay.getDate() - count * 2) // 주말 여유
+  startDay.setDate(startDay.getDate() - count * 2)
   const startDate = startDay.toISOString().slice(0, 10).replace(/-/g, '')
 
   const params = new URLSearchParams({
@@ -188,7 +193,6 @@ export async function fetchMinuteCandles(code: string): Promise<CandleData[]> {
 }
 
 function parseKisDate(dateStr: string): number {
-  // YYYYMMDD -> timestamp ms (KST 09:00 기준)
   const y = dateStr.slice(0, 4)
   const m = dateStr.slice(4, 6)
   const d = dateStr.slice(6, 8)
@@ -205,5 +209,4 @@ function parseKisDateTime(dateStr: string, timeStr: string): number {
   return new Date(`${y}-${m}-${d}T${h}:${min}:${s}+09:00`).getTime()
 }
 
-// zod 사용 검증 (외부 노출용)
 export { z }
