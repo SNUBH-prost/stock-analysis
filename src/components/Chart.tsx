@@ -116,6 +116,9 @@ export default function Chart({
   const currentTfRef = useRef<Timeframe>('D')
   // Pre-fetched data for W, M, and 1-min (stored before calling setPeriod)
   const nonDayDataRef = useRef<KLineData[]>([])
+  // Full 5-year daily history built by background loader; chart reloads when ready
+  const fullDailyDataRef = useRef<KLineData[]>([])
+  const hasFullHistoryRef = useRef(false)
 
   // Refs keep latest prop values without triggering chart reinit
   const levelsRef = useRef(levels)
@@ -235,14 +238,21 @@ export default function Chart({
 
         const tf = currentTfRef.current
 
-        // ── Daily: SSR seed on init, lazy-load older batches on forward scroll ──
+        // ── Daily ──
         if (tf === 'D') {
           if (type === 'init') {
+            // Background loader finished — serve the full dataset
+            if (hasFullHistoryRef.current && fullDailyDataRef.current.length > 0) {
+              const d = fullDailyDataRef.current
+              callback(isHARef.current ? computeHA(d) : d, false)
+              return
+            }
+            // First render: return SSR seed immediately; background loader will reload later
             const seed = initialCandlesRef.current
             if (seed.length > 0) {
               callback(isHARef.current ? computeHA(seed) : seed, { forward: true })
             } else {
-              // SSR unavailable — fetch latest batch from API
+              // SSR unavailable — fetch a single batch now
               try {
                 const res = await fetch(`/api/daily/${code}?period=D`)
                 const d: KLineData[] = await res.json()
@@ -251,7 +261,7 @@ export default function Chart({
               } catch { callback([], false) }
             }
           } else {
-            // type === 'forward': load one older batch
+            // Forward scroll while background loader is still running — lazy-load one batch
             const beforeParam = timestamp ? `&before=${timestamp}` : ''
             try {
               const res = await fetch(`/api/daily/${code}?period=D${beforeParam}`)
@@ -288,13 +298,59 @@ export default function Chart({
   }, [code, refreshSystemOverlays])
 
   useEffect(() => {
-    currentTfRef.current = 'D'
-    initChart()
-    setActiveIndicators(new Set(['VOL']))
-    setCandleType('candle_solid')
-    setScaleMode('normal')
-    setTimeframe('D')
+    let cancelled = false
+
+    const setup = async () => {
+      currentTfRef.current = 'D'
+      hasFullHistoryRef.current = false
+      fullDailyDataRef.current = []
+      setActiveIndicators(new Set(['VOL']))
+      setCandleType('candle_solid')
+      setScaleMode('normal')
+      setTimeframe('D')
+
+      await initChart()
+      if (cancelled) return
+
+      // ── Background: fetch full 5-year daily history ──
+      // initChart used the SSR seed (~100 candles). Now silently fetch the
+      // remaining batches. When done, reload the chart with the full dataset.
+      const seed = initialCandlesRef.current
+      if (!seed.length) return
+
+      setLoading(true)
+      let allData = [...seed]
+      let oldest = allData[0].timestamp
+
+      for (let batch = 0; batch < 13; batch++) {
+        if (cancelled) return
+        try {
+          const res = await fetch(`/api/daily/${code}?period=D&before=${oldest}`)
+          if (!res.ok || cancelled) break
+          const d: KLineData[] = await res.json()
+          if (!Array.isArray(d) || !d.length || cancelled) break
+          allData = [...d, ...allData]
+          oldest = d[0].timestamp
+          if (d.length < 95) break   // reached beginning of available history
+        } catch { break }
+      }
+
+      if (cancelled) return
+      setLoading(false)
+
+      if (allData.length > seed.length) {
+        fullDailyDataRef.current = allData
+        hasFullHistoryRef.current = true
+        // Reload chart with full dataset; getBars(init) will now return allData
+        chartRef.current?.setSymbol({ ticker: code, pricePrecision: 0, volumePrecision: 0 })
+        refreshSystemOverlays()
+      }
+    }
+
+    setup()
+
     return () => {
+      cancelled = true
       if (containerRef.current) {
         import('klinecharts').then(({ dispose }) => {
           if (containerRef.current) dispose(containerRef.current)
@@ -302,7 +358,7 @@ export default function Chart({
         chartRef.current = null
       }
     }
-  }, [initChart])
+  }, [initChart, refreshSystemOverlays, code])
 
   // Sync refs → update overlays only, no chart reinit
   useEffect(() => {
