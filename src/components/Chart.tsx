@@ -10,7 +10,7 @@ type Timeframe = 'D' | 'W' | 'M' | '1'
 type DrawTool = 'none' | 'horizontalRayLine' | 'rayLine' | 'segment' | 'parallelStraightLine' | 'fibonacciLine'
 type ScaleMode = 'normal' | 'logarithm' | 'percentage'
 
-// Anchor for horizontal overlays — predates all chart data
+// Anchor timestamp for horizontal overlays — predates all chart data
 const EPOCH_TS = new Date('2000-01-01T09:00:00+09:00').getTime()
 
 let sellAnnotationRegistered = false
@@ -112,8 +112,10 @@ export default function Chart({
 
   // SSR seed — latest ~100 daily candles from server
   const initialCandlesRef = useRef<KLineData[]>(initialCandles.map(c => ({ ...c })))
-  // Tracks current timeframe so async getBars closure reads the right period
+  // Current timeframe, read by getBars closure
   const currentTfRef = useRef<Timeframe>('D')
+  // Pre-fetched data for W, M, and 1-min (stored before calling setPeriod)
+  const nonDayDataRef = useRef<KLineData[]>([])
 
   // Refs keep latest prop values without triggering chart reinit
   const levelsRef = useRef(levels)
@@ -122,6 +124,7 @@ export default function Chart({
   const savedDrawingsRef = useRef(savedDrawings)
 
   const [timeframe, setTimeframe] = useState<Timeframe>('D')
+  const [loading, setLoading] = useState(false)
   const [drawTool, setDrawTool] = useState<DrawTool>('none')
   const [activeIndicators, setActiveIndicators] = useState<Set<string>>(new Set())
   const [candleType, setCandleType] = useState<CandleType>('candle_solid')
@@ -227,53 +230,46 @@ export default function Chart({
 
     chart.setDataLoader({
       getBars: async ({ type, timestamp, callback }) => {
-        // Never fetch future data — we're not a real-time feed
-        if (type === 'backward') {
-          callback([], false)
-          return
-        }
+        // Never load future (real-time) data
+        if (type === 'backward') { callback([], false); return }
 
         const tf = currentTfRef.current
 
-        // Use SSR seed for the first daily load (fast, no network round-trip)
-        if (type === 'init' && tf === 'D' && initialCandlesRef.current.length > 0) {
-          const data = initialCandlesRef.current
-          callback(
-            isHARef.current ? computeHA(data) : data,
-            { forward: data.length >= 95 }
-          )
+        // ── Daily: SSR seed on init, lazy-load older batches on forward scroll ──
+        if (tf === 'D') {
+          if (type === 'init') {
+            const seed = initialCandlesRef.current
+            if (seed.length > 0) {
+              callback(isHARef.current ? computeHA(seed) : seed, { forward: true })
+            } else {
+              // SSR unavailable — fetch latest batch from API
+              try {
+                const res = await fetch(`/api/daily/${code}?period=D`)
+                const d: KLineData[] = await res.json()
+                if (!Array.isArray(d) || !d.length) { callback([], false); return }
+                callback(isHARef.current ? computeHA(d) : d, { forward: d.length >= 95 })
+              } catch { callback([], false) }
+            }
+          } else {
+            // type === 'forward': load one older batch
+            const beforeParam = timestamp ? `&before=${timestamp}` : ''
+            try {
+              const res = await fetch(`/api/daily/${code}?period=D${beforeParam}`)
+              const d: KLineData[] = await res.json()
+              if (!Array.isArray(d) || !d.length) { callback([], false); return }
+              callback(isHARef.current ? computeHA(d) : d, { forward: d.length >= 95 })
+            } catch { callback([], false) }
+          }
           return
         }
 
-        // Minute charts: single fetch, no lazy-loading
-        if (tf === '1') {
-          if (type !== 'init') { callback([], false); return }
-          try {
-            const res = await fetch(`/api/minute/${code}`)
-            const data: KLineData[] = await res.json()
-            callback(
-              Array.isArray(data) && data.length > 0
-                ? (isHARef.current ? computeHA(data) : data)
-                : [],
-              false
-            )
-          } catch { callback([], false) }
-          return
+        // ── W / M / 1min: data was pre-fetched into nonDayDataRef before setPeriod ──
+        if (type === 'init') {
+          const d = nonDayDataRef.current
+          callback(isHARef.current && d.length ? computeHA(d) : d, false)
+        } else {
+          callback([], false)
         }
-
-        // D/W/M: lazy fetch — append older batches as user scrolls left
-        const kisPeriod = tf as 'D' | 'W' | 'M'
-        const beforeParam = timestamp ? `&before=${timestamp}` : ''
-        try {
-          const res = await fetch(`/api/daily/${code}?period=${kisPeriod}${beforeParam}`)
-          if (!res.ok) { callback([], false); return }
-          const data: KLineData[] = await res.json()
-          if (!Array.isArray(data) || data.length === 0) { callback([], false); return }
-          callback(
-            isHARef.current ? computeHA(data) : data,
-            { forward: data.length >= 95 }
-          )
-        } catch { callback([], false) }
       },
     })
 
@@ -316,7 +312,7 @@ export default function Chart({
     refreshSystemOverlays()
   }, [levels, trades, avgBuyPrice, refreshSystemOverlays])
 
-  const handleTimeframe = useCallback((tf: Timeframe) => {
+  const handleTimeframe = useCallback(async (tf: Timeframe) => {
     if (tf === timeframe) return
     currentTfRef.current = tf
     setTimeframe(tf)
@@ -324,11 +320,35 @@ export default function Chart({
     const chart = chartRef.current
     if (!chart) return
 
+    // For D: just switch period — getBars handles it with SSR seed + lazy loading
+    if (tf === 'D') {
+      chart.setPeriod({ type: 'day', span: 1 })
+      return
+    }
+
+    // For W, M, 1min: pre-fetch data BEFORE calling setPeriod so it's ready
+    // when klinecharts immediately calls getBars(type='init')
+    setLoading(true)
+    try {
+      let rawData: KLineData[]
+      if (tf === '1') {
+        const res = await fetch(`/api/minute/${code}`)
+        rawData = await res.json()
+      } else {
+        const res = await fetch(`/api/daily/${code}?period=${tf}`)
+        rawData = await res.json()
+      }
+      nonDayDataRef.current = Array.isArray(rawData) ? rawData : []
+    } catch {
+      nonDayDataRef.current = []
+    } finally {
+      setLoading(false)
+    }
+
     if (tf === '1') chart.setPeriod({ type: 'minute', span: 1 })
     else if (tf === 'W') chart.setPeriod({ type: 'week', span: 1 })
-    else if (tf === 'M') chart.setPeriod({ type: 'month', span: 1 })
-    else chart.setPeriod({ type: 'day', span: 1 })
-  }, [timeframe])
+    else chart.setPeriod({ type: 'month', span: 1 })
+  }, [timeframe, code])
 
   const handleDrawTool = useCallback((tool: DrawTool) => {
     setDrawTool(tool)
@@ -369,7 +389,7 @@ export default function Chart({
   const toggleHA = useCallback(() => {
     isHARef.current = !isHARef.current
     setIsHA(isHARef.current)
-    // Reload current period so getBars re-runs with updated isHARef
+    // setSymbol triggers getBars(type='init') which re-reads isHARef
     chartRef.current?.setSymbol({ ticker: code, pricePrecision: 0, volumePrecision: 0 })
   }, [code])
 
@@ -503,6 +523,8 @@ export default function Chart({
             </button>
           ))}
         </div>
+
+        {loading && <span className="text-xs text-gray-500 ml-auto animate-pulse">로딩 중...</span>}
       </div>
 
       <div ref={containerRef} className="flex-1 min-h-0" />
