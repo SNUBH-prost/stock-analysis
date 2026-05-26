@@ -101,15 +101,16 @@ export async function fetchQuote(code: string): Promise<QuoteData> {
 
 export async function fetchDailyCandles(
   code: string,
-  count = 1250,
-  period: 'D' | 'W' | 'M' = 'D'
+  period: 'D' | 'W' | 'M' = 'D',
+  beforeTs?: number
 ): Promise<CandleData[]> {
   const token = await getAccessToken()
 
-  const today = new Date()
-  const endDate = today.toISOString().slice(0, 10).replace(/-/g, '')
-  const startDay = new Date(today)
-  const daysBack = period === 'D' ? count * 2 : period === 'W' ? count * 9 : count * 35
+  const endDay = beforeTs ? new Date(beforeTs - 86400000) : new Date()
+  const endDate = endDay.toISOString().slice(0, 10).replace(/-/g, '')
+  const startDay = new Date(endDay)
+  // Go back far enough to guarantee ~100 candles per period
+  const daysBack = period === 'D' ? 200 : period === 'W' ? 750 : 3200
   startDay.setDate(startDay.getDate() - daysBack)
   const startDate = startDay.toISOString().slice(0, 10).replace(/-/g, '')
 

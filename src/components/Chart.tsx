@@ -10,6 +10,9 @@ type Timeframe = 'D' | 'W' | 'M' | '1'
 type DrawTool = 'none' | 'horizontalRayLine' | 'rayLine' | 'segment' | 'parallelStraightLine' | 'fibonacciLine'
 type ScaleMode = 'normal' | 'logarithm' | 'percentage'
 
+// Anchor for horizontal overlays — predates all chart data
+const EPOCH_TS = new Date('2000-01-01T09:00:00+09:00').getTime()
+
 let sellAnnotationRegistered = false
 
 function registerSellAnnotation(registerOverlay: <E = unknown>(template: OverlayTemplate<E>) => void) {
@@ -105,8 +108,12 @@ export default function Chart({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<KLineChart | null>(null)
-  const klineDataRef = useRef<KLineData[]>(initialCandles.map(c => ({ ...c })))
   const isHARef = useRef(false)
+
+  // SSR seed — latest ~100 daily candles from server
+  const initialCandlesRef = useRef<KLineData[]>(initialCandles.map(c => ({ ...c })))
+  // Tracks current timeframe so async getBars closure reads the right period
+  const currentTfRef = useRef<Timeframe>('D')
 
   // Refs keep latest prop values without triggering chart reinit
   const levelsRef = useRef(levels)
@@ -115,7 +122,6 @@ export default function Chart({
   const savedDrawingsRef = useRef(savedDrawings)
 
   const [timeframe, setTimeframe] = useState<Timeframe>('D')
-  const [loading, setLoading] = useState(false)
   const [drawTool, setDrawTool] = useState<DrawTool>('none')
   const [activeIndicators, setActiveIndicators] = useState<Set<string>>(new Set())
   const [candleType, setCandleType] = useState<CandleType>('candle_solid')
@@ -126,7 +132,7 @@ export default function Chart({
   // Stable — reads from refs, never triggers chart reinit
   const refreshSystemOverlays = useCallback(() => {
     const chart = chartRef.current
-    if (!chart || klineDataRef.current.length === 0) return
+    if (!chart) return
 
     chart.removeOverlay({ groupId: 'system' })
 
@@ -134,7 +140,7 @@ export default function Chart({
       chart.createOverlay({
         name: 'horizontalRayLine',
         groupId: 'system',
-        points: [{ timestamp: klineDataRef.current[0].timestamp, value: lv.price }],
+        points: [{ timestamp: EPOCH_TS, value: lv.price }],
         styles: { line: { color: lv.color, size: 1, style: 'dashed', dashedValue: [4, 4] } },
       })
     }
@@ -143,7 +149,7 @@ export default function Chart({
       chart.createOverlay({
         name: 'simpleTag',
         groupId: 'system',
-        points: [{ timestamp: klineDataRef.current[0].timestamp, value: avgBuyPriceRef.current }],
+        points: [{ timestamp: EPOCH_TS, value: avgBuyPriceRef.current }],
         extendData: `평균 ${avgBuyPriceRef.current.toLocaleString()}`,
         styles: {
           line: { color: '#f59e0b', size: 1, style: 'dashed', dashedValue: [6, 3] },
@@ -220,11 +226,57 @@ export default function Chart({
     chartRef.current = chart
 
     chart.setDataLoader({
-      getBars: ({ callback }) => {
-        const data = isHARef.current ? computeHA(klineDataRef.current) : klineDataRef.current
-        callback(data, false)
+      getBars: async ({ type, timestamp, callback }) => {
+        // Never fetch future data — we're not a real-time feed
+        if (type === 'backward') {
+          callback([], false)
+          return
+        }
+
+        const tf = currentTfRef.current
+
+        // Use SSR seed for the first daily load (fast, no network round-trip)
+        if (type === 'init' && tf === 'D' && initialCandlesRef.current.length > 0) {
+          const data = initialCandlesRef.current
+          callback(
+            isHARef.current ? computeHA(data) : data,
+            { forward: data.length >= 95 }
+          )
+          return
+        }
+
+        // Minute charts: single fetch, no lazy-loading
+        if (tf === '1') {
+          if (type !== 'init') { callback([], false); return }
+          try {
+            const res = await fetch(`/api/minute/${code}`)
+            const data: KLineData[] = await res.json()
+            callback(
+              Array.isArray(data) && data.length > 0
+                ? (isHARef.current ? computeHA(data) : data)
+                : [],
+              false
+            )
+          } catch { callback([], false) }
+          return
+        }
+
+        // D/W/M: lazy fetch — append older batches as user scrolls left
+        const kisPeriod = tf as 'D' | 'W' | 'M'
+        const beforeParam = timestamp ? `&before=${timestamp}` : ''
+        try {
+          const res = await fetch(`/api/daily/${code}?period=${kisPeriod}${beforeParam}`)
+          if (!res.ok) { callback([], false); return }
+          const data: KLineData[] = await res.json()
+          if (!Array.isArray(data) || data.length === 0) { callback([], false); return }
+          callback(
+            isHARef.current ? computeHA(data) : data,
+            { forward: data.length >= 95 }
+          )
+        } catch { callback([], false) }
       },
     })
+
     chart.setSymbol({ ticker: code, pricePrecision: 0, volumePrecision: 0 })
     chart.setPeriod({ type: 'day', span: 1 })
     chart.createIndicator('VOL')
@@ -240,10 +292,12 @@ export default function Chart({
   }, [code, refreshSystemOverlays])
 
   useEffect(() => {
+    currentTfRef.current = 'D'
     initChart()
     setActiveIndicators(new Set(['VOL']))
     setCandleType('candle_solid')
     setScaleMode('normal')
+    setTimeframe('D')
     return () => {
       if (containerRef.current) {
         import('klinecharts').then(({ dispose }) => {
@@ -262,33 +316,19 @@ export default function Chart({
     refreshSystemOverlays()
   }, [levels, trades, avgBuyPrice, refreshSystemOverlays])
 
-  const loadCandles = useCallback(async (tf: Timeframe) => {
-    setLoading(true)
-    try {
-      let data: CandleData[]
-      if (tf === '1') {
-        const res = await fetch(`/api/minute/${code}`)
-        data = await res.json()
-      } else {
-        const count = tf === 'M' ? 60 : tf === 'W' ? 150 : 1250
-        const res = await fetch(`/api/daily/${code}?count=${count}&period=${tf}`)
-        data = await res.json()
-      }
-      if (!Array.isArray(data) || data.length === 0) return
-      klineDataRef.current = data.map(c => ({ ...c }))
-      chartRef.current?.setSymbol({ ticker: code, pricePrecision: 0, volumePrecision: 0 })
-    } catch (e) {
-      console.error('candle fetch', e)
-    } finally {
-      setLoading(false)
-    }
-  }, [code])
-
   const handleTimeframe = useCallback((tf: Timeframe) => {
     if (tf === timeframe) return
+    currentTfRef.current = tf
     setTimeframe(tf)
-    loadCandles(tf)
-  }, [timeframe, loadCandles])
+
+    const chart = chartRef.current
+    if (!chart) return
+
+    if (tf === '1') chart.setPeriod({ type: 'minute', span: 1 })
+    else if (tf === 'W') chart.setPeriod({ type: 'week', span: 1 })
+    else if (tf === 'M') chart.setPeriod({ type: 'month', span: 1 })
+    else chart.setPeriod({ type: 'day', span: 1 })
+  }, [timeframe])
 
   const handleDrawTool = useCallback((tool: DrawTool) => {
     setDrawTool(tool)
@@ -329,6 +369,7 @@ export default function Chart({
   const toggleHA = useCallback(() => {
     isHARef.current = !isHARef.current
     setIsHA(isHARef.current)
+    // Reload current period so getBars re-runs with updated isHARef
     chartRef.current?.setSymbol({ ticker: code, pricePrecision: 0, volumePrecision: 0 })
   }, [code])
 
@@ -390,14 +431,6 @@ export default function Chart({
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
-
-  if (initialCandles.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-        시세 데이터를 가져올 수 없습니다
-      </div>
-    )
-  }
 
   const nextCandleLabel = CANDLE_TYPES[(CANDLE_TYPES.findIndex(c => c.key === candleType) + 1) % CANDLE_TYPES.length].label
 
@@ -470,8 +503,6 @@ export default function Chart({
             </button>
           ))}
         </div>
-
-        {loading && <span className="text-xs text-gray-600 ml-auto animate-pulse">로딩 중...</span>}
       </div>
 
       <div ref={containerRef} className="flex-1 min-h-0" />

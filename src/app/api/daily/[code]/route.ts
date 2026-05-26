@@ -11,16 +11,16 @@ export async function GET(
     return NextResponse.json({ error: '유효한 6자리 종목코드를 입력하세요' }, { status: 400 })
   }
 
-  const countParam = request.nextUrl.searchParams.get('count')
-  const count = countParam ? Math.min(parseInt(countParam, 10), 1500) : 1250
-
   const periodParam = request.nextUrl.searchParams.get('period')
   const period = (['D', 'W', 'M'] as const).includes(periodParam as 'D' | 'W' | 'M')
     ? (periodParam as 'D' | 'W' | 'M')
     : 'D'
 
+  const beforeParam = request.nextUrl.searchParams.get('before')
+  const beforeTs = beforeParam ? parseInt(beforeParam, 10) : undefined
+
   try {
-    const candles = await fetchDailyCandles(code, count, period)
+    const candles = await fetchDailyCandles(code, period, beforeTs)
     return NextResponse.json(candles)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
