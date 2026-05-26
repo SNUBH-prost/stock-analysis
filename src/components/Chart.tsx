@@ -232,14 +232,12 @@ export default function Chart({
     chartRef.current = chart
 
     chart.setDataLoader({
-      getBars: async ({ type, timestamp, callback }) => {
+      getBars: async ({ type, period, callback }) => {
         // Never load future (real-time) data
         if (type === 'backward') { callback([], false); return }
 
-        const tf = currentTfRef.current
-
         // ── Daily ──
-        if (tf === 'D') {
+        if (period.type === 'day') {
           if (type === 'init') {
             // Background loader finished — serve the full dataset
             if (hasFullHistoryRef.current && fullDailyDataRef.current.length > 0) {
@@ -247,33 +245,26 @@ export default function Chart({
               callback(isHARef.current ? computeHA(d) : d, false)
               return
             }
-            // First render: return SSR seed immediately; background loader will reload later
+            // SSR seed available — show immediately; background loader will reload with full history
             const seed = initialCandlesRef.current
             if (seed.length > 0) {
-              callback(isHARef.current ? computeHA(seed) : seed, { forward: true })
+              callback(isHARef.current ? computeHA(seed) : seed, false)
             } else {
-              // SSR unavailable — fetch a single batch now
+              // No SSR seed — fetch a single batch now
               try {
                 const res = await fetch(`/api/daily/${code}?period=D`)
                 const d: KLineData[] = await res.json()
-                if (!Array.isArray(d) || !d.length) { callback([], false); return }
-                callback(isHARef.current ? computeHA(d) : d, { forward: d.length >= 95 })
+                callback(Array.isArray(d) && d.length ? (isHARef.current ? computeHA(d) : d) : [], false)
               } catch { callback([], false) }
             }
           } else {
-            // Forward scroll while background loader is still running — lazy-load one batch
-            const beforeParam = timestamp ? `&before=${timestamp}` : ''
-            try {
-              const res = await fetch(`/api/daily/${code}?period=D${beforeParam}`)
-              const d: KLineData[] = await res.json()
-              if (!Array.isArray(d) || !d.length) { callback([], false); return }
-              callback(isHARef.current ? computeHA(d) : d, { forward: d.length >= 95 })
-            } catch { callback([], false) }
+            // No manual lazy-loading — background loader fetches all history automatically
+            callback([], false)
           }
           return
         }
 
-        // ── W / M / 1min: data was pre-fetched into nonDayDataRef before setPeriod ──
+        // ── W / M / 1min: data is pre-fetched into nonDayDataRef before setPeriod is called ──
         if (type === 'init') {
           const d = nonDayDataRef.current
           callback(isHARef.current && d.length ? computeHA(d) : d, false)
